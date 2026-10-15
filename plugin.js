@@ -1,4 +1,4 @@
-/* XOTT Online — Lampa MX plugin, v0.2.0
+/* XOTT Online — Lampa MX plugin, v0.3.0
  * Free, public-domain/open-license video source: Internet Archive.
  * No stream piracy or embedded third-party scraper. 
  */
@@ -112,8 +112,7 @@
             var stream = API + '/download/' + encodeURIComponent(entry.identifier) + '/' +
               selected.file.name.split('/').map(encodeURIComponent).join('/');
             try {
-              Lampa.Player.play({url: stream, title: entry.title || title});
-              if (Lampa.Player.playlist) Lampa.Player.playlist([{url:stream, title:entry.title || title}]);
+              playStream(stream, entry.title || title);
             } catch (e) {
               toast('Помилка плеєра: ' + e.message);
             }
@@ -122,12 +121,57 @@
     });
   }
 
+
+  function playStream(url, title) {
+    try {
+      Lampa.Player.play({url: url, title: title});
+      if (Lampa.Player.playlist) Lampa.Player.playlist([{url: url, title: title}]);
+    } catch (e) { toast('Плеєр: ' + e.message); }
+  }
+
+  function searchCommons(card) {
+    var title = nameOf(card);
+    if (!title) return toast('Не вдалося визначити назву');
+    toast('Шукаємо відео Wikimedia Commons...');
+    var api = 'https://commons.wikimedia.org/w/api.php?origin=*&action=query&format=json' +
+      '&generator=search&gsrnamespace=6&gsrlimit=30&gsrsearch=' +
+      encodeURIComponent(title + ' filetype:video') +
+      '&prop=imageinfo&iiprop=url%7Cmime%7Csize&iiurlwidth=720';
+    json(api, function (err, data) {
+      if (err) return toast('Wikimedia: ' + err.message);
+      var pages = (data.query && data.query.pages) || {};
+      var results = Object.keys(pages).map(function(k){return pages[k];})
+        .filter(function(p) {
+          var info = p.imageinfo && p.imageinfo[0];
+          return info && info.url && /video\//i.test(info.mime || '') && similarity(p.title.replace(/^File:/, ''), title) >= 25;
+        }).sort(function(a,b) {
+          return similarity(b.title, title) - similarity(a.title, title);
+        });
+      if (!results.length) return toast('У Wikimedia Commons відео цього фільму не знайдено');
+      pick(results.slice(0,20).map(function (p) {
+        return {title: p.title.replace(/^File:/, ''), page: p,
+          subtitle: 'Wikimedia Commons · відкрита ліцензія'};
+      }), 'Wikimedia Commons', function(selected) {
+        var info = selected.page.imageinfo[0];
+        pick([{title:'Оригінальна доріжка', subtitle:'Мова залежить від відео'}],
+          'Озвучка', function() {
+            pick([{title:'Оригінальний файл · ' + ((info.mime || '').split('/')[1] || 'відео').toUpperCase(),
+              url:info.url}], 'Якість', function(choice) {
+                playStream(choice.url, selected.title);
+              });
+          });
+      });
+    });
+  }
+
   function openSourceMenu(card) {
     lastCard = card || lastCard;
     if (!lastCard) return toast('Спочатку відкрийте картку фільму');
-    pick([{title:'Internet Archive', subtitle:'Безкоштовні відео з відкритого архіву', id:'archive'}],
+    pick([{title:'Internet Archive', subtitle:'Архів відкритих відеоматеріалів', id:'archive'},
+      {title:'Wikimedia Commons', subtitle:'Відео з вільними ліцензіями', id:'commons'}],
       'Вибрати джерело', function (item) {
         if (item.id === 'archive') searchArchive(lastCard);
+        if (item.id === 'commons') searchCommons(lastCard);
       });
   }
 
@@ -156,7 +200,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.2.0 initialized');
+    console.log('[XOTT Online] v0.3.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
