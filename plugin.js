@@ -169,7 +169,7 @@
   // XOTT's single source selector opens the chosen balancer directly
   // inside Online MOD, which handles voice/season/episode/quality.
   // No local VPS or proxy is operated by XOTT.
-  var MOD_SCRIPT = 'https://nb557.github.io/plugins/online_mod.js';
+  var MOD_SCRIPT = 'https://cdn.jsdelivr.net/gh/nb557/plugins@851bcc9bc064ac06dc2b0e7ff6631baba61be511/online_mod.js';
   var MOD_CONSENT_KEY = 'xott_online_mod_consent';
   var MOD_BALANSERS = [
     {id:'rezka2', title:'HDRezka', description:'Фільми, серіали, озвучки'},
@@ -242,11 +242,25 @@
     }
   }
 
+  function hideDuplicateModButton() {
+    try {
+      var id = 'xott-hide-mod-card-button';
+      if (document.getElementById && document.getElementById(id)) return;
+      var style = document.createElement('style');
+      style.id = id;
+      style.textContent = '.full-start__button.view--online_mod{display:none !important}';
+      (document.head || document.documentElement).appendChild(style);
+    } catch (e) {
+      console.warn('[XOTT Online] Could not hide duplicate button', e);
+    }
+  }
+
   function openBalancer(card, entry) {
     if (!card || !entry) return;
     pendingSelection = {card:card, entry:entry};
 
     if (modRegistered()) {
+      hideDuplicateModButton();
       launchSelectedBalancer(card, entry);
       return;
     }
@@ -264,6 +278,7 @@
         // Component init in Online MOD is synchronous in the checked revision.
         if (!modRegistered()) return toast('Онлайн-модуль завантажено, але він не запустився');
         window.XOTT_MOD_READY = true;
+        hideDuplicateModButton();
         var selected = pendingSelection;
         pendingSelection = null;
         if (selected) launchSelectedBalancer(selected.card, selected.entry);
