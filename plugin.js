@@ -1,11 +1,11 @@
-/* XOTT Online — Lampa MX plugin, v0.5.0
+/* XOTT Online — Lampa MX plugin, v0.6.0
  * Free, public-domain/open-license video source: Internet Archive.
  * No stream piracy or embedded third-party scraper. 
  */
 (function () {
   'use strict';
-  if (window.XOTT_ONLINE_V02) return;
-  window.XOTT_ONLINE_V02 = true;
+  if (window.XOTT_ONLINE_V06) return;
+  window.XOTT_ONLINE_V06 = true;
 
   var API = 'https://archive.org';
   var BUTTON_CLASS = 'xott-online-button';
@@ -165,71 +165,141 @@
   }
 
 
-  var FILMIX_SCRIPT = 'https://lampaplugins.github.io/store/fx.js';
-  function loadRemoteScript(url, success) {
-    var script = document.createElement('script');
-    script.src = url;
-    script.async = true;
-    script.onload = function(){ if (success) success(); };
-    script.onerror = function(){ toast('Не вдалося завантажити розширення'); };
-    document.head.appendChild(script);
-  }
-  function activateFilmix() {
-    if (window.XOTT_FILMIX_LOADED) return toast('Filmix уже завантажено. Повторно відкрийте картку фільму.');
-    pick([
-      {title:'Підключити Filmix', action:'accept', subtitle:'Завантажити стороннє розширення fx.js'},
-      {title:'Скасувати', action:'cancel'}
-    ], 'Зовнішній плагін Filmix', function(choice) {
-      if (choice.action !== 'accept') return;
-      loadRemoteScript(FILMIX_SCRIPT, function(){
-        window.XOTT_FILMIX_LOADED = true;
-        toast('Filmix завантажено. Закрийте й відкрийте картку повторно.');
-      });
-    });
-  }
-  function configLampac() {
-    if (!Lampa.Input || !Lampa.Input.edit) {
-      return toast('Ця версія Lampa не підтримує налаштування адреси');
+  // Standalone community plugins. These are third-party scripts, not hosted by XOTT.
+  var EXTERNAL = {
+    filmix: {
+      title: 'Filmix',
+      url: 'https://lampaplugins.github.io/store/fx.js',
+      component: 'online_fxapi',
+      consent: 'xott_allow_external_filmix'
+    },
+    mod: {
+      title: 'Онлайн МОД (HDRezka та інші)',
+      url: 'https://nb557.github.io/plugins/online_mod.js',
+      component: 'online_mod',
+      consent: 'xott_allow_external_mod'
     }
-    Lampa.Input.edit({
-      title:'URL вашого сервера Lampac (http://IP:9118)',
-      value:Lampa.Storage.get('xott_lampac_url',''), free:true, nosave:true
-    },function(value){
-      value=String(value||'').trim().replace(/\/+$/,'');
-      if (!/^https?:\/\//i.test(value)) return toast('Введіть http:// або https:// адресу');
-      Lampa.Storage.set('xott_lampac_url',value);
-      toast('Адресу збережено. Виберіть HDRezka ще раз.');
-    });
+  };
+  var loading = {};
+
+  function getStored(key, fallback) {
+    try { return Lampa.Storage.get(key, fallback); }
+    catch (e) { return fallback; }
   }
-  function useLampac() {
-    var host = Lampa.Storage.get('xott_lampac_url','');
-    if (!host) return configLampac();
+
+  function setStored(key, value) {
+    try { Lampa.Storage.set(key, value); }
+    catch (e) { console.warn('[XOTT Online] Storage:', e); }
+  }
+
+  function isReady(kind) {
+    if (kind === 'filmix' && window.online_filmix) return true;
+    if (kind === 'mod') {
+      try {
+        if (Lampa.SettingsApi && Lampa.SettingsApi.getComponent &&
+            Lampa.SettingsApi.getComponent('online_mod')) return true;
+      } catch (ignored) {}
+    }
+    return !!window['XOTT_EXTERNAL_READY_' + kind];
+  }
+
+  function openExternal(kind, card) {
+    if (!card || !nameOf(card)) return toast('Не вдалося визначити фільм');
+    var provider = EXTERNAL[kind];
+    if (!provider) return toast('Невідоме джерело');
+
+    function run() {
+      if (!Lampa.Activity || typeof Lampa.Activity.push !== 'function') {
+        return toast('Ця збірка Lampa не підтримує відкриття онлайн-джерел');
+      }
+      try {
+        Lampa.Activity.push({
+          url: '',
+          title: provider.title,
+          component: provider.component,
+          search: nameOf(card),
+          search_one: card.title || card.name || nameOf(card),
+          search_two: card.original_title || card.original_name || '',
+          movie: card,
+          page: 1
+        });
+      } catch (error) {
+        console.error('[XOTT Online] Activity:', error);
+        toast('Помилка відкриття: ' + (error.message || error));
+      }
+    }
+
+    if (isReady(kind)) return run();
+    if (loading[kind]) return toast('Зачекайте: підключаємо ' + provider.title + '...');
+
+    function load() {
+      loading[kind] = true;
+      toast('Підключення ' + provider.title + '...');
+      var script = document.createElement('script');
+      script.src = provider.url;
+      script.async = true;
+      script.onload = function () {
+        loading[kind] = false;
+        window['XOTT_EXTERNAL_READY_' + kind] = true;
+        if (!isReady(kind)) return toast('Розширення завантажено, але не ініціалізувалося');
+        run();
+      };
+      script.onerror = function () {
+        loading[kind] = false;
+        toast('Не вийшло завантажити ' + provider.title + '. Перевірте мережу.');
+      };
+      (document.head || document.documentElement).appendChild(script);
+    }
+
+    if (getStored(provider.consent, false) === true) return load();
+
     pick([
-      {title:'Завантажити онлайн-модуль Lampac', action:'connect', subtitle:host+'/on.js'},
-      {title:'Змінити адресу сервера', action:'edit'}
-    ], 'HDRezka та інші провайдери · Lampac', function(choice){
-      if (choice.action === 'edit') return configLampac();
-      if (window.XOTT_LAMPAC_LOADED) return toast('Lampac підключено. Відкрийте картку ще раз.');
-      loadRemoteScript(host+'/on.js',function(){
-        window.XOTT_LAMPAC_LOADED=true;
-        toast('Lampac підключено. Доступні джерела залежать від налаштувань сервера.');
-      });
+      {
+        title: 'Підключити ' + provider.title,
+        action: 'allow',
+        subtitle: 'Це сторонній JS-плагін; він може вимагати власний акаунт'
+      },
+      {
+        title: 'Скасувати',
+        action: 'cancel'
+      }
+    ], 'Дозвіл на запуск стороннього розширення', function (choice) {
+      if (choice.action !== 'allow') return;
+      setStored(provider.consent, true);
+      load();
     });
   }
 
   function openSourceMenu(card) {
     lastCard = card || lastCard;
     if (!lastCard) return toast('Спочатку відкрийте картку фільму');
-    pick([{title:'Internet Archive', subtitle:'Архів відкритих відеоматеріалів', id:'archive'},
-      {title:'Wikimedia Commons', subtitle:'Відео з вільними ліцензіями', id:'commons'},
-      {title:'Filmix · окреме розширення', subtitle:'Підключити сторонній Filmix-плагін', id:'filmix'},
-      {title:'HDRezka та інші · Lampac', subtitle:'Потрібен власний запущений сервер Lampac', id:'lampac'}],
-      'Вибрати джерело', function (item) {
-        if (item.id === 'archive') searchArchive(lastCard);
-        if (item.id === 'commons') searchCommons(lastCard);
-        if (item.id === 'filmix') activateFilmix();
-        if (item.id === 'lampac') useLampac();
-      });
+    pick([
+      {
+        title: 'Filmix · онлайн-перегляд',
+        subtitle: 'Окреме JS-розширення Filmix',
+        id: 'filmix'
+      },
+      {
+        title: 'HDRezka та інші · Онлайн МОД',
+        subtitle: 'Вибір джерела, доступних озвучок та якості всередині Онлайн МОД',
+        id: 'mod'
+      },
+      {
+        title: 'Internet Archive',
+        subtitle: 'Відкритий архів відео',
+        id: 'archive'
+      },
+      {
+        title: 'Wikimedia Commons',
+        subtitle: 'Вільні відеоматеріали',
+        id: 'commons'
+      }
+    ], 'XOTT Online · джерела', function (item) {
+      if (item.id === 'filmix') openExternal('filmix', lastCard);
+      else if (item.id === 'mod') openExternal('mod', lastCard);
+      else if (item.id === 'archive') searchArchive(lastCard);
+      else if (item.id === 'commons') searchCommons(lastCard);
+    });
   }
 
   function inject(e) {
@@ -257,7 +327,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.5.0 initialized');
+    console.log('[XOTT Online] v0.6.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
