@@ -240,8 +240,8 @@
       script.async = true;
       script.onload = function () {
         loading[kind] = false;
-        window['XOTT_EXTERNAL_READY_' + kind] = true;
         if (!isReady(kind)) return toast('Розширення завантажено, але не ініціалізувалося');
+        window['XOTT_EXTERNAL_READY_' + kind] = true;
         run();
       };
       script.onerror = function () {
