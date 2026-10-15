@@ -1,12 +1,12 @@
-/* XOTT Online — Lampa MX plugin, v0.6.0
- * Serverless launcher for Filmix FX and Online MOD external integrations.
- * These third-party providers determine their own availability, access, language and quality.
+/* XOTT Online — Lampa MX plugin, v0.7.0
+ * Direct source selection: HDRezka, Filmix, CDNVideoHub, Kodik, AniLibria via Online MOD.
+ * Audio, seasons, episodes, and quality are controlled by the selected provider UI.
  * Also includes Internet Archive and Wikimedia Commons search.
  */
 (function () {
   'use strict';
-  if (window.XOTT_ONLINE_V06) return;
-  window.XOTT_ONLINE_V06 = true;
+  if (window.XOTT_ONLINE_V07) return;
+  window.XOTT_ONLINE_V07 = true;
 
   var API = 'https://archive.org';
   var BUTTON_CLASS = 'xott-online-button';
@@ -166,107 +166,134 @@
   }
 
 
-  // Standalone community plugins. These are third-party scripts, not hosted by XOTT.
-  var EXTERNAL = {
-    filmix: {
-      title: 'Filmix',
-      url: 'https://lampaplugins.github.io/store/fx.js',
-      component: 'online_fxapi',
-      consent: 'xott_allow_external_filmix'
-    },
-    mod: {
-      title: 'Онлайн МОД (HDRezka та інші)',
-      url: 'https://nb557.github.io/plugins/online_mod.js',
-      component: 'online_mod',
-      consent: 'xott_allow_external_mod'
-    }
-  };
-  var loading = {};
+  // XOTT's single source selector opens the chosen balancer directly
+  // inside Online MOD, which handles voice/season/episode/quality.
+  // No local VPS or proxy is operated by XOTT.
+  var MOD_SCRIPT = 'https://nb557.github.io/plugins/online_mod.js';
+  var MOD_CONSENT_KEY = 'xott_online_mod_consent';
+  var MOD_BALANSERS = [
+    {id:'rezka2', title:'HDRezka', description:'Фільми, серіали, озвучки'},
+    {id:'filmix', title:'Filmix', description:'Фільми, серіали, доступні озвучки'},
+    {id:'cdnvideohub', title:'CDNVideoHub', description:'Ще одне онлайн-джерело'},
+    {id:'kodik', title:'Kodik', description:'Серіали та аніме'},
+    {id:'anilibria2', title:'AniLibria', description:'Аніме'}
+  ];
+  var modLoading = false;
+  var pendingSelection = null;
 
-  function getStored(key, fallback) {
+  function stored(key, fallback) {
     try { return Lampa.Storage.get(key, fallback); }
     catch (e) { return fallback; }
   }
 
-  function setStored(key, value) {
+  function save(key, value) {
     try { Lampa.Storage.set(key, value); }
-    catch (e) { console.warn('[XOTT Online] Storage:', e); }
+    catch (e) { console.warn('[XOTT Online] Cannot save setting', key, e); }
   }
 
-  function isReady(kind) {
-    if (kind === 'filmix' && window.online_filmix) return true;
-    if (kind === 'mod') {
-      try {
-        if (Lampa.SettingsApi && Lampa.SettingsApi.getComponent &&
-            Lampa.SettingsApi.getComponent('online_mod')) return true;
-      } catch (ignored) {}
-    }
-    return !!window['XOTT_EXTERNAL_READY_' + kind];
+  function modRegistered() {
+    try {
+      if (Lampa.SettingsApi && typeof Lampa.SettingsApi.getComponent === 'function') {
+        if (Lampa.SettingsApi.getComponent('online_mod')) return true;
+      }
+    } catch (e) {}
+    return window.XOTT_MOD_READY === true;
   }
 
-  function openExternal(kind, card) {
-    if (!card || !nameOf(card)) return toast('Не вдалося визначити фільм');
-    var provider = EXTERNAL[kind];
-    if (!provider) return toast('Невідоме джерело');
+  function saveBalancerForCard(card, balancer) {
+    save('online_mod_balanser', balancer);
 
-    function run() {
-      if (!Lampa.Activity || typeof Lampa.Activity.push !== 'function') {
-        return toast('Ця збірка Lampa не підтримує відкриття онлайн-джерел');
+    // Online MOD also supports per-movie saved balancers. Override only
+    // this selected movie so an older preference cannot win.
+    try {
+      if (card && card.id && Lampa.Storage.field &&
+          Lampa.Storage.field('online_mod_save_last_balanser') === true &&
+          Lampa.Storage.cache) {
+        var perMovie = Lampa.Storage.cache('online_mod_last_balanser', 200, {});
+        perMovie[card.id] = balancer;
+        save('online_mod_last_balanser', perMovie);
       }
-      try {
-        Lampa.Activity.push({
-          url: '',
-          title: provider.title,
-          component: provider.component,
-          search: nameOf(card),
-          search_one: card.title || card.name || nameOf(card),
-          search_two: card.original_title || card.original_name || '',
-          movie: card,
-          page: 1
-        });
-      } catch (error) {
-        console.error('[XOTT Online] Activity:', error);
-        toast('Помилка відкриття: ' + (error.message || error));
-      }
+    } catch (e) {}
+  }
+
+  function launchSelectedBalancer(card, entry) {
+    if (!card || !nameOf(card) || !entry) {
+      return toast('Не вдалося визначити картку фільму');
+    }
+    if (!Lampa.Activity || typeof Lampa.Activity.push !== 'function') {
+      return toast('Lampa MX не підтримує цей онлайн-модуль');
     }
 
-    if (isReady(kind)) return run();
-    if (loading[kind]) return toast('Зачекайте: підключаємо ' + provider.title + '...');
+    saveBalancerForCard(card, entry.id);
+    try {
+      Lampa.Activity.push({
+        url: '',
+        title: 'XOTT Online · ' + entry.title,
+        component: 'online_mod',
+        search: nameOf(card),
+        search_one: card.title || card.name || nameOf(card),
+        search_two: card.original_title || card.original_name || '',
+        movie: card,
+        page: 1
+      });
+    } catch (e) {
+      console.error('[XOTT Online] Cannot open balancer', e);
+      toast('Не вдалося відкрити ' + entry.title);
+    }
+  }
+
+  function openBalancer(card, entry) {
+    if (!card || !entry) return;
+    pendingSelection = {card:card, entry:entry};
+
+    if (modRegistered()) {
+      launchSelectedBalancer(card, entry);
+      return;
+    }
+    if (modLoading) return toast('Завантажуємо онлайн-джерела, зачекайте...');
 
     function load() {
-      loading[kind] = true;
-      toast('Підключення ' + provider.title + '...');
+      modLoading = true;
+      toast('Підключаємо джерела для ' + entry.title + '...');
+      // Do not treat an external script as trusted without user consent.
       var script = document.createElement('script');
-      script.src = provider.url;
+      script.src = MOD_SCRIPT;
       script.async = true;
       script.onload = function () {
-        loading[kind] = false;
-        if (!isReady(kind)) return toast('Розширення завантажено, але не ініціалізувалося');
-        window['XOTT_EXTERNAL_READY_' + kind] = true;
-        run();
+        modLoading = false;
+        // Component init in Online MOD is synchronous in the checked revision.
+        if (!modRegistered()) return toast('Онлайн-модуль завантажено, але він не запустився');
+        window.XOTT_MOD_READY = true;
+        var selected = pendingSelection;
+        pendingSelection = null;
+        if (selected) launchSelectedBalancer(selected.card, selected.entry);
       };
       script.onerror = function () {
-        loading[kind] = false;
-        toast('Не вийшло завантажити ' + provider.title + '. Перевірте мережу.');
+        modLoading = false;
+        pendingSelection = null;
+        toast('Не вдалося завантажити Онлайн МОД. Перевірте мережу.');
       };
       (document.head || document.documentElement).appendChild(script);
     }
 
-    if (getStored(provider.consent, false) === true) return load();
+    if (stored(MOD_CONSENT_KEY, false) === true) return load();
 
     pick([
       {
-        title: 'Підключити ' + provider.title,
-        action: 'allow',
-        subtitle: 'Це сторонній JS-плагін; він може вимагати власний акаунт'
+        title:'Підключити онлайн-джерела',
+        subtitle:'Сторонній скрипт Онлайн МОД із GitHub',
+        action:'allow'
       },
       {
-        title: 'Скасувати',
-        action: 'cancel'
+        title:'Скасувати',
+        action:'cancel'
       }
-    ], 'Дозвіл на запуск стороннього розширення', function (choice) {
-      if (choice.action !== 'allow') return;
-      setStored(provider.consent, true);
+    ], 'Дозвіл на запуск зовнішнього розширення', function (choice) {
+      if (!choice || choice.action !== 'allow') {
+        pendingSelection = null;
+        return;
+      }
+      save(MOD_CONSENT_KEY, true);
       load();
     });
   }
@@ -274,32 +301,26 @@
   function openSourceMenu(card) {
     lastCard = card || lastCard;
     if (!lastCard) return toast('Спочатку відкрийте картку фільму');
-    pick([
-      {
-        title: 'Filmix · онлайн-перегляд',
-        subtitle: 'Окреме JS-розширення Filmix',
-        id: 'filmix'
-      },
-      {
-        title: 'HDRezka та інші · Онлайн МОД',
-        subtitle: 'Вибір джерела, доступних озвучок та якості всередині Онлайн МОД',
-        id: 'mod'
-      },
-      {
-        title: 'Internet Archive',
-        subtitle: 'Відкритий архів відео',
-        id: 'archive'
-      },
-      {
-        title: 'Wikimedia Commons',
-        subtitle: 'Вільні відеоматеріали',
-        id: 'commons'
-      }
-    ], 'XOTT Online · джерела', function (item) {
-      if (item.id === 'filmix') openExternal('filmix', lastCard);
-      else if (item.id === 'mod') openExternal('mod', lastCard);
-      else if (item.id === 'archive') searchArchive(lastCard);
-      else if (item.id === 'commons') searchCommons(lastCard);
+    var options = MOD_BALANSERS.map(function (entry) {
+      return {
+        id:entry.id,
+        title:entry.title,
+        subtitle:entry.description,
+        balancer:entry
+      };
+    });
+    options.push({
+      id:'archive', title:'Internet Archive',
+      subtitle:'Відкриті відеоматеріали'
+    });
+    options.push({
+      id:'commons', title:'Wikimedia Commons',
+      subtitle:'Відео з вільними ліцензіями'
+    });
+    pick(options, 'XOTT Online · Обери джерело', function (option) {
+      if (option.id === 'archive') return searchArchive(lastCard);
+      if (option.id === 'commons') return searchCommons(lastCard);
+      if (option.balancer) openBalancer(lastCard, option.balancer);
     });
   }
 
@@ -328,7 +349,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.6.0 initialized');
+    console.log('[XOTT Online] v0.7.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
