@@ -1,12 +1,12 @@
-/* XOTT Online — Lampa MX plugin, v0.8.0
- * Direct source selection with HDRezka network modes and Filmix account-quality settings.
+/* XOTT Online — Lampa MX plugin, v0.9.0
+ * Automatic HDRezka route checks and Filmix account-based quality settings.
  * Audio, seasons, episodes, and quality are controlled by the selected provider UI.
  * Also includes Internet Archive and Wikimedia Commons search.
  */
 (function () {
   'use strict';
-  if (window.XOTT_ONLINE_V08) return;
-  window.XOTT_ONLINE_V08 = true;
+  if (window.XOTT_ONLINE_V09) return;
+  window.XOTT_ONLINE_V09 = true;
 
   var API = 'https://archive.org';
   var BUTTON_CLASS = 'xott-online-button';
@@ -172,10 +172,8 @@
   var MOD_SCRIPT = 'https://cdn.jsdelivr.net/gh/nb557/plugins@851bcc9bc064ac06dc2b0e7ff6631baba61be511/online_mod.js';
   var MOD_CONSENT_KEY = 'xott_online_mod_consent';
   var MOD_BALANSERS = [
-    {id:'rezka2', title:'HDRezka · через проксі', description:'Спроба виправити мережеву помилку (через сторонній проксі)', balancer:'rezka2', mode:'proxy-mirror'},
-    {id:'rezka-direct', title:'HDRezka · напряму', description:'Якщо проксі не відповідає', balancer:'rezka2', mode:'direct'},
-    {id:'rezka-host-proxy', title:'HDRezka · альтернативний сервер', description:'Інший маршрут через проксі, якщо перші не працюють', balancer:'rezka2', mode:'proxy-origin'},
-    {id:'filmix', title:'Filmix', description:'480p без підтвердженого доступу; вища якість залежить від акаунта'},
+    {id:'rezka2', title:'HDRezka', description:'Автоматично обираємо доступне з’єднання'},
+    {id:'filmix', title:'Filmix', description:'Якість та озвучки за доступом Filmix'},
     {id:'cdnvideohub', title:'CDNVideoHub', description:'Ще одне онлайн-джерело'},
     {id:'kodik', title:'Kodik', description:'Серіали та аніме'},
     {id:'anilibria2', title:'AniLibria', description:'Аніме'}
@@ -223,6 +221,119 @@
     } catch (e) {}
   }
 
+  var rezkaCheckId = 0;
+  var rezkaLastChoice = null;
+  var rezkaProbeTimeout = 5500;
+  var rezkaProxyServers = [
+    'https://cors.nb557.workers.dev/',
+    'https://cors.fx666.workers.dev/'
+  ];
+
+  function allowedMirror(value) {
+    var candidate = String(value || 'https://kvk.zone').trim();
+    if (!/^https:\/\/[a-z0-9.-]+(?::443)?\/?$/i.test(candidate)) return 'https://kvk.zone';
+    return candidate.replace(/\/$/, '');
+  }
+
+  function rezkaRouteCandidates() {
+    var mirror = allowedMirror(stored('online_mod_rezka2_mirror',''));
+    var custom = stored('online_mod_proxy_other_url','');
+    var customs = [];
+    if (stored('online_mod_proxy_other',false) === true && /^https:\/\/[a-z0-9.-]+\/$/i.test(String(custom || ''))) {
+      customs.push(String(custom));
+    }
+    var proxies = customs.concat(rezkaProxyServers);
+    var unique = {};
+    var routes = [];
+    function add(mode, host, proxy) {
+      var id = mode + host + proxy;
+      if (!unique[id]) {
+        unique[id] = true;
+        routes.push({mode:mode,host:host,proxy:proxy});
+      }
+    }
+    var preferNative = false;
+    try { preferNative = !!(Lampa.Platform && Lampa.Platform.is('android')); } catch (e) {}
+    if (preferNative) add('direct',mirror,'');
+    proxies.forEach(function(proxy) { add('proxy-mirror',mirror,proxy); });
+    proxies.forEach(function(proxy) { add('proxy-origin','https://rezka.ag',proxy); });
+    if (!preferNative) add('direct',mirror,'');
+    return routes;
+  }
+
+  function rezkaProbeURL(route) {
+    var url = route.host + '/engine/ajax/search.php';
+    if (!route.proxy) return url;
+    var ua = 'Mozilla/5.0 (compatible; XOTTOnline/0.9)';
+    var params = 'param/Origin=' + encodeURIComponent(route.host) + '/'
+      + 'param/Referer=' + encodeURIComponent(route.host + '/') + '/'
+      + 'param/User-Agent=' + encodeURIComponent(ua) + '/';
+    return route.proxy + 'enc2/' + encodeURIComponent(btoa(params + url)) + '/search.txt?jacred.test';
+  }
+
+  function looksLikeRezkaSearch(body) {
+    if (typeof body !== 'string' || !body) return false;
+    if (/anubis_challenge|cf-chl|cloudflare.*challenge|error-code|access denied|just a moment/i.test(body)) return false;
+    // Empty valid search responses are possible; the upstream search page
+    // returns list markup when results exist, but sometimes only a short HTML fragment.
+    return /<li[^>]*>\s*<a\s|b-search__live_all|b-search__live|<div\s+class="b-search__live/i.test(body);
+  }
+
+  function findRezkaRoute(card, callback) {
+    var request;
+    try { request = new Lampa.Reguest(); } catch (e) { return callback(null); }
+    if (!request || typeof request.native !== 'function') return callback(null);
+    var routes = rezkaRouteCandidates();
+    var n = 0;
+    var op = ++rezkaCheckId;
+    toast('HDRezka: перевіряємо доступне з’єднання...');
+    function next() {
+      if (op !== rezkaCheckId) return;
+      if (n >= routes.length) {
+        rezkaLastChoice = null;
+        return callback(null);
+      }
+      var route = routes[n++];
+      var responded = false;
+      try {
+        request.clear();
+        request.timeout(rezkaProbeTimeout);
+        request.native(rezkaProbeURL(route), function(data) {
+          if (responded || op !== rezkaCheckId) return;
+          responded = true;
+          if (looksLikeRezkaSearch(data)) {
+            rezkaLastChoice = {route:route,until:Date.now() + 120000};
+            callback(route);
+          } else next();
+        }, function() {
+          if (responded || op !== rezkaCheckId) return;
+          responded = true;
+          next();
+        }, 'q=' + encodeURIComponent(nameOf(card)), {
+          dataType:'text',
+          withCredentials:false
+        });
+      } catch (e) { if (!responded) {responded=true;next();} }
+    }
+    if (rezkaLastChoice && Date.now() < rezkaLastChoice.until) {
+      return callback(rezkaLastChoice.route);
+    }
+    next();
+  }
+
+  function saveRezkaRoute(route) {
+    save('online_mod_proxy_rezka2', !!route.proxy);
+    save('online_mod_proxy_rezka2_mirror', route.host !== 'https://rezka.ag');
+    if (route.proxy) {
+      save('online_mod_proxy_other', true);
+      save('online_mod_proxy_other_url', route.proxy);
+    } else {
+      save('online_mod_proxy_other', false);
+    }
+    // The upstream component reads its mirror from this key.
+    if (route.host !== 'https://rezka.ag') save('online_mod_rezka2_mirror', route.host);
+  }
+
   function launchSelectedBalancer(card, entry) {
     if (!card || !nameOf(card) || !entry) {
       return toast('Не вдалося визначити картку фільму');
@@ -252,14 +363,19 @@
     }
 
     if ((entry.balancer || entry.id) === 'rezka2') {
-      // Online MOD defaults to direct requests, which are rejected by
-      // some WebViews (cross-origin / network errors). Proxy use is
-      // optional and visible in the source name, not a silent bypass.
-      var mode = entry.mode || 'proxy-mirror';
-      save('online_mod_proxy_rezka2', mode !== 'direct');
-      save('online_mod_proxy_rezka2_mirror', mode === 'proxy-mirror');
+      return findRezkaRoute(card, function(route) {
+        if (!route) {
+          return toast('HDRezka зараз недоступна з цієї мережі: перевірені маршрути не відповіли. Спробуйте Filmix або інше джерело.');
+        }
+        saveRezkaRoute(route);
+        openOnlineActivity(card, entry);
+      });
     }
 
+    openOnlineActivity(card, entry);
+  }
+
+  function openOnlineActivity(card, entry) {
     saveBalancerForCard(card, entry.balancer || entry.id);
     try {
       Lampa.Activity.push({
@@ -406,7 +522,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.8.0 initialized');
+    console.log('[XOTT Online] v0.9.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
