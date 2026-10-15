@@ -1,4 +1,4 @@
-/* XOTT Online — Lampa MX plugin, v0.4.0
+/* XOTT Online — Lampa MX plugin, v0.5.0
  * Free, public-domain/open-license video source: Internet Archive.
  * No stream piracy or embedded third-party scraper. 
  */
@@ -205,12 +205,12 @@
     var host = Lampa.Storage.get('xott_lampac_url','');
     if (!host) return configLampac();
     pick([
-      {title:'Завантажити онлайн-модуль Lampac', action:'connect', subtitle:host+'/online.js'},
+      {title:'Завантажити онлайн-модуль Lampac', action:'connect', subtitle:host+'/on.js'},
       {title:'Змінити адресу сервера', action:'edit'}
     ], 'HDRezka та інші провайдери · Lampac', function(choice){
       if (choice.action === 'edit') return configLampac();
       if (window.XOTT_LAMPAC_LOADED) return toast('Lampac підключено. Відкрийте картку ще раз.');
-      loadRemoteScript(host+'/online.js',function(){
+      loadRemoteScript(host+'/on.js',function(){
         window.XOTT_LAMPAC_LOADED=true;
         toast('Lampac підключено. Доступні джерела залежать від налаштувань сервера.');
       });
@@ -257,7 +257,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.4.0 initialized');
+    console.log('[XOTT Online] v0.5.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
