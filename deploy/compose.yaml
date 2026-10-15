@@ -1,0 +1,39 @@
+name: xott-online
+services:
+  lampac:
+    image: ghcr.io/lampac-nextgen/lampac:latest
+    restart: unless-stopped
+    shm_size: "1gb"
+    volumes:
+      - ./init.conf:/lampac/init.conf:ro
+      - ./runtime/passwd:/lampac/passwd:ro
+    expose:
+      - "9118"
+    networks:
+      - private
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - lampac
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      XOTT_DOMAIN: ${XOTT_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - private
+
+networks:
+  private:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
