@@ -2,7 +2,7 @@
 
 **Один JS-плагін для кнопки «Онлайн» без власного VPS.** Встановлення:
 ```
-https://cdn.jsdelivr.net/gh/XOTT69/lampa69@cf6700f7/plugin.js
+https://cdn.jsdelivr.net/gh/XOTT69/lampa69@13386e69/plugin.js
 ```
 
 1. Lampa MX → Налаштування → Плагіни → видалити попередню версію XOTT Online.
