@@ -1,0 +1,11 @@
+{$XOTT_DOMAIN} {
+    encode gzip zstd
+
+    # Do not publish common administrative and unrelated services.
+    @private path /admin* /weblog* /stats* /sisi* /ts* /dlna* /sync*
+    respond @private "Forbidden" 403
+
+    reverse_proxy lampac:9118 {
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
