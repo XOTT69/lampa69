@@ -1,12 +1,12 @@
-/* XOTT Online — Lampa MX plugin, v0.7.0
- * Direct source selection: HDRezka, Filmix, CDNVideoHub, Kodik, AniLibria via Online MOD.
+/* XOTT Online — Lampa MX plugin, v0.8.0
+ * Direct source selection with HDRezka network modes and Filmix account-quality settings.
  * Audio, seasons, episodes, and quality are controlled by the selected provider UI.
  * Also includes Internet Archive and Wikimedia Commons search.
  */
 (function () {
   'use strict';
-  if (window.XOTT_ONLINE_V07) return;
-  window.XOTT_ONLINE_V07 = true;
+  if (window.XOTT_ONLINE_V08) return;
+  window.XOTT_ONLINE_V08 = true;
 
   var API = 'https://archive.org';
   var BUTTON_CLASS = 'xott-online-button';
@@ -172,12 +172,19 @@
   var MOD_SCRIPT = 'https://cdn.jsdelivr.net/gh/nb557/plugins@851bcc9bc064ac06dc2b0e7ff6631baba61be511/online_mod.js';
   var MOD_CONSENT_KEY = 'xott_online_mod_consent';
   var MOD_BALANSERS = [
-    {id:'rezka2', title:'HDRezka', description:'Фільми, серіали, озвучки'},
-    {id:'filmix', title:'Filmix', description:'Фільми, серіали, доступні озвучки'},
+    {id:'rezka2', title:'HDRezka · через проксі', description:'Спроба виправити мережеву помилку (через сторонній проксі)', balancer:'rezka2', mode:'proxy-mirror'},
+    {id:'rezka-direct', title:'HDRezka · напряму', description:'Якщо проксі не відповідає', balancer:'rezka2', mode:'direct'},
+    {id:'rezka-host-proxy', title:'HDRezka · альтернативний сервер', description:'Інший маршрут через проксі, якщо перші не працюють', balancer:'rezka2', mode:'proxy-origin'},
+    {id:'filmix', title:'Filmix', description:'480p без підтвердженого доступу; вища якість залежить від акаунта'},
     {id:'cdnvideohub', title:'CDNVideoHub', description:'Ще одне онлайн-джерело'},
     {id:'kodik', title:'Kodik', description:'Серіали та аніме'},
     {id:'anilibria2', title:'AniLibria', description:'Аніме'}
   ];
+  var QUALITY_HELP = {
+    id:'filmix-settings', title:'Filmix · налаштувати якість (720p+)',
+    description:'Авторизація Filmix, прив’язка пристрою та перевірка тарифу',
+    settings:true
+  };
   var modLoading = false;
   var pendingSelection = null;
 
@@ -224,7 +231,36 @@
       return toast('Lampa MX не підтримує цей онлайн-модуль');
     }
 
-    saveBalancerForCard(card, entry.id);
+    if (entry.settings) {
+      var quality = window.mod_filmix && window.mod_filmix.max_qualitie;
+      toast('Filmix: якість залежить від прав акаунта' + (quality ? ' (зараз до ' + quality + 'p)' : ''));
+      if (Lampa.Settings && typeof Lampa.Settings.create === 'function') {
+        try {
+          Lampa.Settings.create('online_mod_filmix', {
+            onBack:function () {
+              if (Lampa.Settings && Lampa.Settings.create) Lampa.Settings.create('online_mod');
+            }
+          });
+        } catch (e) {
+          console.warn('[XOTT Online] Filmix settings unavailable', e);
+          toast('Налаштування → Онлайн МОД → Filmix → додати пристрій / токен');
+        }
+      } else {
+        toast('Відкрий Налаштування → Онлайн МОД → Filmix');
+      }
+      return;
+    }
+
+    if ((entry.balancer || entry.id) === 'rezka2') {
+      // Online MOD defaults to direct requests, which are rejected by
+      // some WebViews (cross-origin / network errors). Proxy use is
+      // optional and visible in the source name, not a silent bypass.
+      var mode = entry.mode || 'proxy-mirror';
+      save('online_mod_proxy_rezka2', mode !== 'direct');
+      save('online_mod_proxy_rezka2_mirror', mode === 'proxy-mirror');
+    }
+
+    saveBalancerForCard(card, entry.balancer || entry.id);
     try {
       Lampa.Activity.push({
         url: '',
@@ -325,6 +361,12 @@
       };
     });
     options.push({
+      id:QUALITY_HELP.id,
+      title:QUALITY_HELP.title,
+      subtitle:QUALITY_HELP.description,
+      balancer:QUALITY_HELP
+    });
+    options.push({
       id:'archive', title:'Internet Archive',
       subtitle:'Відкриті відеоматеріали'
     });
@@ -364,7 +406,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.7.0 initialized');
+    console.log('[XOTT Online] v0.8.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
