@@ -322,6 +322,12 @@
   }
 
   function saveRezkaRoute(route) {
+    if (!stored('xott_rezka_restore', null)) {
+      save('xott_rezka_restore', {
+        enabled:stored('online_mod_proxy_other', false),
+        url:stored('online_mod_proxy_other_url', '')
+      });
+    }
     save('online_mod_proxy_rezka2', !!route.proxy);
     save('online_mod_proxy_rezka2_mirror', route.host !== 'https://rezka.ag');
     if (route.proxy) {
@@ -376,6 +382,14 @@
   }
 
   function openOnlineActivity(card, entry) {
+    if ((entry.balancer || entry.id) !== 'rezka2') {
+      var originalProxy = stored('xott_rezka_restore', null);
+      if (originalProxy) {
+        save('online_mod_proxy_other', originalProxy.enabled);
+        save('online_mod_proxy_other_url', originalProxy.url);
+        save('xott_rezka_restore', null);
+      }
+    }
     saveBalancerForCard(card, entry.balancer || entry.id);
     try {
       Lampa.Activity.push({
@@ -448,7 +462,7 @@
     pick([
       {
         title:'Підключити онлайн-джерела',
-        subtitle:'Сторонній скрипт Онлайн МОД із GitHub',
+        subtitle:'Сторонній скрипт і проксі, яким можуть бути видимі адреси запитів',
         action:'allow'
       },
       {
