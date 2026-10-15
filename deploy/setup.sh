@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run on your own Ubuntu VM: bash deploy/setup.sh watch.your-domain.example
+# Run on your own Ubuntu 24.04 VPS (OVHcloud, Hetzner, etc.): bash deploy/setup.sh watch.your-domain.example
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -23,7 +23,10 @@ cd "$ROOT"
 
 echo "Installing Docker and Compose on Ubuntu..."
 sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-v2 ca-certificates curl
+sudo apt-get install -y software-properties-common ca-certificates curl
+sudo add-apt-repository -y universe
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
 sudo systemctl enable --now docker
 
 mkdir -p runtime
@@ -53,6 +56,6 @@ sudo docker compose -f compose.yaml up -d
 echo
 echo "Services created. HTTPS requires a DNS A record pointed to this server"
 echo "and TCP ports 80/443 allowed in both Oracle Cloud network rules and VM firewall."
-echo "When DNS is ready, verify: curl -I https://$DOMAIN/online.js"
-echo "Lampa MX source URL: https://$DOMAIN/online.js"
+echo "When DNS is ready, verify: curl -I https://$DOMAIN/on.js"
+echo "Lampa MX source URL: https://$DOMAIN/on.js"
 echo "View logs: cd $ROOT && sudo docker compose -f compose.yaml logs --tail=100"
