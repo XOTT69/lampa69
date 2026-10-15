@@ -140,13 +140,16 @@
       (e.data && e.data.activity && e.data.activity.render && e.data.activity.render()) ||
       (window.jQuery && window.jQuery(document));
     if (!root || !root.find) return;
-    var buttons = root.find('.full-start__buttons').first();
+    var buttons = root.find('.full-start-new__buttons').first();
+    if (!buttons.length) buttons = root.find('.full-start__buttons').first();
     if (!buttons.length || buttons.find('.' + BUTTON_CLASS).length) return;
-    var button = window.jQuery('<div class="full-start__button selector ' + BUTTON_CLASS + '" data-xott="online">' +
+    var $ = window.jQuery || window.$;
+    if (!$) return;
+    var button = $('<div class="full-start__button selector view--online ' + BUTTON_CLASS + '" data-xott="online">' +
       '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>' +
       '<span>Онлайн</span></div>');
     button.on('hover:enter click', function () { openSourceMenu(card); });
-    buttons.append(button);
+    buttons.prepend(button);
   }
 
   function init() {
