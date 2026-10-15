@@ -1,4 +1,4 @@
-/* XOTT Online — Lampa MX plugin, v0.3.0
+/* XOTT Online — Lampa MX plugin, v0.4.0
  * Free, public-domain/open-license video source: Internet Archive.
  * No stream piracy or embedded third-party scraper. 
  */
@@ -164,14 +164,71 @@
     });
   }
 
+
+  var FILMIX_SCRIPT = 'https://lampaplugins.github.io/store/fx.js';
+  function loadRemoteScript(url, success) {
+    var script = document.createElement('script');
+    script.src = url;
+    script.async = true;
+    script.onload = function(){ if (success) success(); };
+    script.onerror = function(){ toast('Не вдалося завантажити розширення'); };
+    document.head.appendChild(script);
+  }
+  function activateFilmix() {
+    if (window.XOTT_FILMIX_LOADED) return toast('Filmix уже завантажено. Повторно відкрийте картку фільму.');
+    pick([
+      {title:'Підключити Filmix', action:'accept', subtitle:'Завантажити стороннє розширення fx.js'},
+      {title:'Скасувати', action:'cancel'}
+    ], 'Зовнішній плагін Filmix', function(choice) {
+      if (choice.action !== 'accept') return;
+      loadRemoteScript(FILMIX_SCRIPT, function(){
+        window.XOTT_FILMIX_LOADED = true;
+        toast('Filmix завантажено. Закрийте й відкрийте картку повторно.');
+      });
+    });
+  }
+  function configLampac() {
+    if (!Lampa.Input || !Lampa.Input.edit) {
+      return toast('Ця версія Lampa не підтримує налаштування адреси');
+    }
+    Lampa.Input.edit({
+      title:'URL вашого сервера Lampac (http://IP:9118)',
+      value:Lampa.Storage.get('xott_lampac_url',''), free:true, nosave:true
+    },function(value){
+      value=String(value||'').trim().replace(/\/+$/,'');
+      if (!/^https?:\/\//i.test(value)) return toast('Введіть http:// або https:// адресу');
+      Lampa.Storage.set('xott_lampac_url',value);
+      toast('Адресу збережено. Виберіть HDRezka ще раз.');
+    });
+  }
+  function useLampac() {
+    var host = Lampa.Storage.get('xott_lampac_url','');
+    if (!host) return configLampac();
+    pick([
+      {title:'Завантажити онлайн-модуль Lampac', action:'connect', subtitle:host+'/online.js'},
+      {title:'Змінити адресу сервера', action:'edit'}
+    ], 'HDRezka та інші провайдери · Lampac', function(choice){
+      if (choice.action === 'edit') return configLampac();
+      if (window.XOTT_LAMPAC_LOADED) return toast('Lampac підключено. Відкрийте картку ще раз.');
+      loadRemoteScript(host+'/online.js',function(){
+        window.XOTT_LAMPAC_LOADED=true;
+        toast('Lampac підключено. Доступні джерела залежать від налаштувань сервера.');
+      });
+    });
+  }
+
   function openSourceMenu(card) {
     lastCard = card || lastCard;
     if (!lastCard) return toast('Спочатку відкрийте картку фільму');
     pick([{title:'Internet Archive', subtitle:'Архів відкритих відеоматеріалів', id:'archive'},
-      {title:'Wikimedia Commons', subtitle:'Відео з вільними ліцензіями', id:'commons'}],
+      {title:'Wikimedia Commons', subtitle:'Відео з вільними ліцензіями', id:'commons'},
+      {title:'Filmix · окреме розширення', subtitle:'Підключити сторонній Filmix-плагін', id:'filmix'},
+      {title:'HDRezka та інші · Lampac', subtitle:'Потрібен власний запущений сервер Lampac', id:'lampac'}],
       'Вибрати джерело', function (item) {
         if (item.id === 'archive') searchArchive(lastCard);
         if (item.id === 'commons') searchCommons(lastCard);
+        if (item.id === 'filmix') activateFilmix();
+        if (item.id === 'lampac') useLampac();
       });
   }
 
@@ -200,7 +257,7 @@
     if (window.XOTT_ONLINE_INITIALIZED) return;
     window.XOTT_ONLINE_INITIALIZED = true;
     Lampa.Listener.follow('full', inject);
-    console.log('[XOTT Online] v0.3.0 initialized');
+    console.log('[XOTT Online] v0.4.0 initialized');
   }
 
   if (typeof Lampa === 'undefined') return;
