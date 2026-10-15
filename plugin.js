@@ -1,6 +1,7 @@
 /* XOTT Online — Lampa MX plugin, v0.6.0
- * Free, public-domain/open-license video source: Internet Archive.
- * No stream piracy or embedded third-party scraper. 
+ * Serverless launcher for Filmix FX and Online MOD external integrations.
+ * These third-party providers determine their own availability, access, language and quality.
+ * Also includes Internet Archive and Wikimedia Commons search.
  */
 (function () {
   'use strict';
