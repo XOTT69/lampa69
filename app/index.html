@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="theme-color" content="#141820">
+    <title>XOTT TV</title>
+    <link rel="stylesheet" href="vender/scrollbar/jquery.scrollbar.css">
+    <link rel="stylesheet" href="vender/keypad/style.css">
+    <link rel="stylesheet" href="css/app.css?v=__VERSION__">
+    <link rel="stylesheet" href="xott.css?v=__VERSION__">
+</head>
+<body>
+    <div class="welcome"></div>
+    <div id="app"></div>
+    <div id="xott-recovery" style="display:none">
+        <strong>XOTT TV довго завантажується</strong>
+        <p>Перевірте інтернет. Якщо проблема виникла після встановлення плагіна, відкрийте безпечний режим.</p>
+        <a href="?safe=1">Безпечний режим</a>
+        <a href="./">Перезапустити</a>
+        <p>На пульті: стрілки, OK, Назад. У безпечному режимі сторонні плагіни вимкнені на цей запуск.</p>
+    </div>
+    <script src="bootstrap.js?v=__VERSION__"></script>
+    <script src="vender/jquery/jquery.js" onerror="XOTT_BOOT_ERROR()"></script>
+    <script src="vender/notify/notify.js"></script>
+    <script src="vender/scrollbar/jquery.scrollbar.js"></script>
+    <script src="vender/navigator/navigator.js"></script>
+    <script src="vender/keypad/keypad.js"></script>
+    <script src="app.min.js?v=__VERSION__" onerror="XOTT_BOOT_ERROR()"></script>
+</body>
+</html>
