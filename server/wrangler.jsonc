@@ -1,0 +1,20 @@
+{
+  "name": "xott-tv-api",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "vars": {
+    "APP_ORIGIN": "https://xott69.github.io",
+    "APP_URL": "https://xott69.github.io/lampa69/app/",
+    "BOT_USERNAME": "REPLACE_WITH_YOUR_BOT_USERNAME",
+    "CATALOG_URL": ""
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "xott-tv-db",
+    "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+    "migrations_dir": "migrations"
+  }],
+  "triggers": {"crons": ["17 3 * * *"]},
+  "observability": {"enabled": false}
+}

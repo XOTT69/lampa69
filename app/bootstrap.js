@@ -11,7 +11,7 @@
         plugins_use: !window.XOTT_SAFE_MODE,
         plugins_store: true,
         lang_use: true,
-        disable_features: {remote_configuration: true}
+        disable_features: {remote_configuration: true, trailers: true, ads: true, reactions: true, discuss: true, ai: true, subscribe: true, persons: true, install_proxy: true}
     };
     /* Defaults only: never overwrite preferences on the next launch. */
     var defaults = {language: 'uk', tmdb_lang: 'uk', player: 'inner', player_iptv: 'inner', player_torrent: 'inner'};

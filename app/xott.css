@@ -5,3 +5,7 @@ body { background: #141820; }
 #xott-recovery { position: fixed; bottom: 3%; left: 5%; right: 5%; z-index: 999999; padding: 1.5em; background: #242c3b; color: white; font: 18px sans-serif; border: 2px solid #91baff; }
 #xott-recovery a { display: inline-block; padding: .7em 1em; margin: .3em; background: white; color: #141820; }
 #xott-recovery a:focus { outline: 5px solid #91baff; }
+.xott-login { text-align: center; }
+.xott-login__code { font-size: 2.8em; font-weight: bold; letter-spacing: .15em; margin: .5em 0; color: #91baff; }
+.xott-login__qr { display: inline-block; background: white; padding: 12px; margin: .6em; }
+.ad-banner, .ad-preroll, .ad-video-block { display: none !important; }
