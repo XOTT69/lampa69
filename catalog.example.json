@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "tmdb_id": 12690,
+      "type": "movie",
+      "title": "Big Buck Bunny",
+      "streams": [{
+        "name": "Big Buck Bunny · відкритий демонстраційний фільм",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+        "quality": "MP4",
+        "voice": "Без діалогів",
+        "language": "zxx"
+      }]
+    }
+  ]
+}
