@@ -30,6 +30,8 @@ jobs:
       - name: Build application
         env:
           SITE_URL: https://xott69.github.io/lampa69/
+          XOTT_API_URL: ${{ vars.XOTT_API_URL }}
+          XOTT_CATALOG_URL: ${{ vars.XOTT_CATALOG_URL }}
         run: npm run build
       - name: Verify build and bootstrap
         run: npm test
