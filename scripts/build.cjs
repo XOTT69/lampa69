@@ -9,6 +9,7 @@ const SOURCE_SHA = '616c80224518a7c7e04e2789d5811881b93bf611';
 const upstream = path.resolve(process.env.LAMPA_SOURCE || path.join(ROOT, '.upstream'));
 const out = path.join(ROOT, 'dist');
 const version = require('../package.json').version;
+const base = (process.env.SITE_URL || 'https://xott69.github.io/lampa69/').replace(/\/?$/, '/');
 async function main() {
     if (cp.execFileSync('git', ['rev-parse', 'HEAD'], {cwd: upstream, encoding: 'utf8'}).trim() !== SOURCE_SHA) throw Error('Unexpected Lampa source revision');
     const load = createRequire(path.join(upstream, 'package.json'));
@@ -23,9 +24,13 @@ async function main() {
     fs.rmSync(out, {recursive: true, force: true});
     fs.mkdirSync(out, {recursive: true});
     fs.cpSync(path.join(upstream, 'public'), path.join(out, 'app'), {recursive: true});
+    fs.rmSync(path.join(out, 'app/vender/vast'), {recursive: true, force: true});
     const bundle = await rollup({
         input: path.join(upstream, 'src/app.js'),
         plugins: [{name: 'xott-tv-detection', transform(code, id) {
+            if (id.endsWith('/src/interaction/advert/manager.js')) return {code: 'export default {init(){}}', map: null};
+            if (id.endsWith('/src/interaction/advert/preroll.js')) return {code: 'export default {init(){},show(data,done){done()}}', map: null};
+            if (id.endsWith('/src/services/metric.js')) return {code: 'export default {init(){},counter(){},histogram(){}}', map: null};
             if (!id.endsWith('/src/core/platform.js')) return null;
             const before = "return is('tizen') || is('webos') || is('orsay')";
             if (!code.includes(before)) throw Error('TV detection patch no longer matches upstream');
@@ -52,12 +57,19 @@ async function main() {
         fs.writeFileSync(path.join(out, 'app/css', file.replace(/\.scss$/, '.css')), prefixed.css);
     }
     fs.cpSync(path.join(upstream, 'src/lang'), path.join(out, 'app/lang'), {recursive: true});
-    for (const file of ['index.html', 'bootstrap.js', 'xott.css']) fs.writeFileSync(path.join(out, 'app', file), fs.readFileSync(path.join(ROOT, 'app', file), 'utf8').replace(/__VERSION__/g, version));
+    for (const file of ['index.html', 'bootstrap.js', 'account.js', 'xott.css']) fs.writeFileSync(path.join(out, 'app', file), fs.readFileSync(path.join(ROOT, 'app', file), 'utf8').replace(/__VERSION__/g, version));
+    const config = {api: process.env.XOTT_API_URL || '', catalog: process.env.XOTT_CATALOG_URL || base + 'catalog.example.json', version};
+    if (config.api && !/^https:\/\//.test(config.api)) throw Error('XOTT_API_URL requires HTTPS');
+    fs.writeFileSync(path.join(out, 'app/config.js'), 'window.XOTT_CONFIG = ' + JSON.stringify(config) + ';\n');
     fs.mkdirSync(path.join(out, 'app/plugins'), {recursive: true});
-    fs.writeFileSync(path.join(out, 'app/plugins/modification.js'), fs.readFileSync(path.join(ROOT, 'app/modification.js'), 'utf8').replace(/__VERSION__/g, version));
+    const modification = fs.readFileSync(path.join(ROOT, 'app/modification.js'), 'utf8').replace(/__VERSION__/g, version);
+    const sourcePlugin = fs.readFileSync(path.join(ROOT, 'plugins/sources.js'), 'utf8');
+    fs.writeFileSync(path.join(out, 'app/plugins/modification.js'), modification + '\nif (!window.XOTT_SAFE_MODE) {\n' + sourcePlugin + '\n}\n');
+    fs.mkdirSync(path.join(out, 'plugins'), {recursive: true});
+    fs.writeFileSync(path.join(out, 'plugins/sources.js'), sourcePlugin);
+    fs.copyFileSync(path.join(ROOT, 'catalog.example.json'), path.join(out, 'catalog.example.json'));
     fs.writeFileSync(path.join(out, 'app/plugins_black_list.json'), '[]\n');
     /* Deployment base may include a project subdirectory, e.g. /lampa69/. */
-    const base = (process.env.SITE_URL || 'https://xott69.github.io/lampa69/').replace(/\/?$/, '/');
     if (!/^https?:\/\//.test(base)) throw Error('SITE_URL must be an absolute HTTP(S) URL');
     fs.mkdirSync(path.join(out, 'msx'), {recursive: true});
     fs.writeFileSync(path.join(out, 'msx/start.json'), JSON.stringify({name: 'XOTT TV', version, parameter: 'content:' + base + 'msx/start.json', action: 'link:' + base + 'app/'}, null, 2));
