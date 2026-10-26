@@ -46,3 +46,8 @@ test('all local script and stylesheet dependencies are packaged', () => {
     assert.equal(manifest.upstream, '616c80224518a7c7e04e2789d5811881b93bf611');
     assert.ok(fs.statSync(path.join(ROOT, 'dist/source/lampa-source.tar.gz')).size > 1000);
 });
+test('advertising and metric request modules are excluded from the application bundle', () => {
+    const bundle = fs.readFileSync(path.join(ROOT, 'dist/app/app.min.js'), 'utf8');
+    assert.doesNotMatch(bundle, /imasdk\.googleapis\.com|api\/metric\/stat|preroll launch|api:\s*'preroll'/);
+    assert.match(fs.readFileSync(path.join(ROOT, 'dist/app/plugins/modification.js'), 'utf8'), /XOTT_SOURCES_V2/);
+});
