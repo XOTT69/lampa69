@@ -1,0 +1,20 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
+test('source plugin rejects embeds and creates tracked playback through the Lampa API', () => {
+    let played, history, message;
+    const Lampa = {Noty: {show: text => {message = text;}}, Listener: {follow() {}}, Timeline: {link: () => ({card: 'movie_1'}), view: () => ({time: 12})}, Utils: {hash: () => 123}, Favorite: {add: (...args) => {history = args;}}, Player: {play: data => {played = data;}}};
+    const context = {Lampa, window: {appready: false}};
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../plugins/sources.js'), 'utf8'), context);
+    const plugin = context.window.XottSources;
+    assert.equal(plugin.playable('https://example.com/embed/1'), false);
+    assert.equal(plugin.playable('http://example.com/movie.mp4'), false);
+    assert.equal(plugin.playable('javascript:alert(1)'), false);
+    assert.equal(plugin.playable('https://example.com/video.m3u8?token=a'), true);
+    plugin.play({id: 1, title: 'Тест'}, {url: 'https://example.com/embed/1'});
+    assert.equal(played, undefined); assert.match(message, /пряме HTTPS/);
+    plugin.play({id: 1, title: 'Тест'}, {url: 'https://example.com/film.mp4'});
+    assert.equal(played.url, 'https://example.com/film.mp4'); assert.equal(played.timeline.time, 12); assert.equal(history[0], 'history');
+});
