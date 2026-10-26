@@ -32,6 +32,13 @@
         $('#xott-recovery').hide();
         $('.head__logo-icon').empty().append($('<span class="xott-brand"></span>').text('XOTT TV'));
         Lampa.SettingsApi.addComponent({component: 'xott_tv', name: 'XOTT TV', icon: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M3 4h18v13H3V4zm2 2v9h14V6H5zm3 13h8v2H8z"/></svg>'});
+        if (window.XottAccount) {
+            XottAccount.ready();
+            action('Увійти через Telegram', 'Код на телевізорі → підтвердження у Telegram', XottAccount.login);
+            action('Мій акаунт', 'Статус входу', function () { var me = XottAccount.user(); Lampa.Noty.show(me ? 'Ви увійшли: ' + me.name : 'Ви ще не увійшли'); });
+            action('Синхронізувати', 'Закладки, історія та прогрес між пристроями', function () { XottAccount.sync(true); });
+            action('Вийти з акаунта', 'Завершити сесію цього пристрою', XottAccount.logout);
+        }
         action('Діагностика телевізора', 'Версія, браузер, HLS та MP4', info);
         action('Безпечний режим', 'Перезапуск без сторонніх плагінів. Налаштування зберігаються.', function () { location.href = '?safe=1'; });
         action('Звичайний режим', 'Перезапуск із вашими плагінами', function () { location.href = './'; });
