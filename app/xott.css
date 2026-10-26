@@ -1,0 +1,7 @@
+body { background: #141820; }
+.welcome { background-color: #141820; }
+.head__logo-icon { width: auto; min-width: 4em; }
+.xott-brand { font-size: 1.1em; font-weight: 700; color: #91baff; letter-spacing: .08em; white-space: nowrap; }
+#xott-recovery { position: fixed; bottom: 3%; left: 5%; right: 5%; z-index: 999999; padding: 1.5em; background: #242c3b; color: white; font: 18px sans-serif; border: 2px solid #91baff; }
+#xott-recovery a { display: inline-block; padding: .7em 1em; margin: .3em; background: white; color: #141820; }
+#xott-recovery a:focus { outline: 5px solid #91baff; }
