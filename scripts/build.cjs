@@ -30,6 +30,8 @@ async function main() {
         plugins: [{name: 'xott-tv-detection', transform(code, id) {
             if (id.endsWith('/src/interaction/advert/manager.js')) return {code: 'export default {init(){}}', map: null};
             if (id.endsWith('/src/interaction/advert/preroll.js')) return {code: 'export default {init(){},show(data,done){done()}}', map: null};
+            if (id.endsWith('/src/services/events.js')) return {code: 'export default {init(){}}', map: null};
+            if (id.endsWith('/src/services/libs.js')) return {code: "import Utils from '../utils/utils'; export default {init(){Utils.putScriptAsync(['./vender/hls/hls.js','./vender/dash/dash.js'], function(){})}}", map: null};
             if (id.endsWith('/src/services/metric.js')) return {code: 'export default {init(){},counter(){},histogram(){}}', map: null};
             if (!id.endsWith('/src/core/platform.js')) return null;
             const before = "return is('tizen') || is('webos') || is('orsay')";
@@ -58,7 +60,7 @@ async function main() {
     }
     fs.cpSync(path.join(upstream, 'src/lang'), path.join(out, 'app/lang'), {recursive: true});
     for (const file of ['index.html', 'bootstrap.js', 'account.js', 'xott.css']) fs.writeFileSync(path.join(out, 'app', file), fs.readFileSync(path.join(ROOT, 'app', file), 'utf8').replace(/__VERSION__/g, version));
-    const config = {api: process.env.XOTT_API_URL || '', catalog: process.env.XOTT_CATALOG_URL || base + 'catalog.example.json', version};
+    const config = {api: process.env.XOTT_API_URL || '', catalog: process.env.XOTT_CATALOG_URL || '', providers: process.env.XOTT_PROVIDER_API_URL || '', version};
     if (config.api && !/^https:\/\//.test(config.api)) throw Error('XOTT_API_URL requires HTTPS');
     fs.writeFileSync(path.join(out, 'app/config.js'), 'window.XOTT_CONFIG = ' + JSON.stringify(config) + ';\n');
     fs.mkdirSync(path.join(out, 'app/plugins'), {recursive: true});
