@@ -1,6 +1,7 @@
 /* Independent guest-source adapters. No open proxy, ad SDK or iframe playback. */
 export const providerList = [
     {id: 'filmix', name: 'Filmix', access: 'guest', note: 'Гостьовий доступ до 480p; частина відео може бути недоступна'},
+    {id: 'aniliberty', name: 'AniLiberty', access: 'guest', note: 'Аніме; озвучка джерела, абсолютна нумерація серій'},
     {id: 'rezka', name: 'HDRezka', access: 'guest', note: 'Залежить від доступності сайту; захищені відео не відкриваються'}
 ];
 const MAX_BODY = 1024 * 1024 * 3;
@@ -58,6 +59,33 @@ export function createProviders(fetchImpl = fetch) {
         }
         return {provider: 'filmix', streams: streams.slice(0, 300), status: streams.length ? 'ready' : blocked ? 'restricted' : 'empty', message: blocked && !streams.length ? 'Filmix обмежив це відео. Обмеження джерела не обходяться.' : !streams.length ? 'Гостьових відеопотоків для цього результату немає' : ''};
     }
+    async function libertySearch(term) {
+        const url = new URL('https://api.anilibria.app/api/v1/app/search/releases'); url.searchParams.set('query', term);
+        const list = await json(url.href);
+        return {provider: 'aniliberty', items: (Array.isArray(list) ? list : []).slice(0, 40).filter(item => !item.is_blocked_by_geo && !item.is_blocked_by_copyrights).map(item => ({id: String(item.id), title: textOnly(item.name?.main || item.name?.english), original_title: textOnly(item.name?.english || ''), year: Number(item.year) || null, type: item.type?.value === 'MOVIE' ? 'movie' : 'tv'}))};
+    }
+    async function libertyStreams(id) {
+        if (!/^\d{1,10}$/.test(String(id))) throw new SourceError(400, 'Некоректний ID');
+        const release = await json('https://api.anilibria.app/api/v1/anime/releases/' + id);
+        if (release.is_blocked_by_geo || release.is_blocked_by_copyrights) return {provider: 'aniliberty', streams: [], status: 'restricted', message: 'Джерело обмежило доступ до цього релізу'};
+        const streams = [];
+        for (const episode of [...(release.episodes || [])].sort((a, b) => a.ordinal - b.ordinal)) {
+            for (const quality of [480, 720, 1080]) {
+                const value = episode['hls_' + quality]; if (!value) continue;
+                let url; try { url = new URL(value); } catch { continue; }
+                if (url.protocol !== 'https:' || !(url.hostname === 'libria.fun' || url.hostname.endsWith('.libria.fun'))) continue;
+                // Source-provided playback preferences only. Never change authorization or geo parameters.
+                if (url.searchParams.has('isWithVideoAds')) url.searchParams.set('isWithVideoAds', '0');
+                if (url.searchParams.has('isWithVideoAdsAlways')) url.searchParams.set('isWithVideoAdsAlways', '0');
+                if (isMedia(url.href)) streams.push({url: url.href, quality: quality + 'p', voice: 'Озвучка AniLiberty', season: release.type?.value === 'MOVIE' ? undefined : 1, episode: release.type?.value === 'MOVIE' ? undefined : Number(episode.ordinal), name: textOnly(episode.name || '')});
+            }
+        }
+        if (streams.length) {
+            const manifest = await read(streams[0].url);
+            if (!manifest.startsWith('#EXTM3U') || /scte35|cue-out|preroll|\/ads\/|CLASS=["']ad/i.test(manifest)) return {provider: 'aniliberty', streams: [], status: 'ads_required', message: 'Джерело не надало плейлист без рекламних міток'};
+        }
+        return {provider: 'aniliberty', streams: streams.slice(0, 300), status: streams.length ? 'ready' : 'empty', message: streams.length ? 'Абсолютна нумерація серій джерела' : 'Доступних серій немає'};
+    }
     const rezkaHeaders = {accept: 'text/html,application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: 'https://rezka.ag/'};
     async function rezkaSearch(term) {
         const html = await read('https://rezka.ag/engine/ajax/search.php', {method: 'POST', headers: {...rezkaHeaders, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams({q: term})});
@@ -112,12 +140,14 @@ export function createProviders(fetchImpl = fetch) {
             if (request.method === 'GET' && !route) return Response.json({providers: providerList}, {headers});
             if (!['GET', 'POST'].includes(request.method)) throw new SourceError(405, 'Метод не підтримується');
             let input = {};
-            if (request.method === 'POST') { const text = await request.text(); if (text.length > 4096) throw new SourceError(413, 'Завеликий запит'); try { input = JSON.parse(text); } catch { throw new SourceError(400, 'Некоректний JSON'); } }
+            if (request.method === 'POST') { const reader = request.body?.getReader(); let text = '', size = 0; if (reader) { const decoder = new TextDecoder(); while (true) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length; if (size > 4096) { await reader.cancel(); throw new SourceError(413, 'Завеликий запит'); } text += decoder.decode(chunk.value, {stream: true}); } text += decoder.decode(); } try { input = JSON.parse(text); } catch { throw new SourceError(400, 'Некоректний JSON'); } }
             const term = query(url.searchParams.get('query'));
             if (route.endsWith('/search') && term.length < 2) throw new SourceError(400, 'Введіть щонайменше дві літери');
             let result;
             if (route === 'filmix/search' && request.method === 'GET') result = await filmixSearch(term);
             else if (route === 'filmix/streams' && request.method === 'POST') result = await filmixStreams(input.id);
+            else if (route === 'aniliberty/search' && request.method === 'GET') result = await libertySearch(term);
+            else if (route === 'aniliberty/streams' && request.method === 'POST') result = await libertyStreams(input.id);
             else if (route === 'rezka/search' && request.method === 'GET') result = await rezkaSearch(term);
             else if (route === 'rezka/details' && request.method === 'POST') result = await rezkaDetails(input.id);
             else if (route === 'rezka/streams' && request.method === 'POST') result = await rezkaStreams(input);
