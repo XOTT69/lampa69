@@ -18,3 +18,8 @@ test('source plugin rejects embeds and creates tracked playback through the Lamp
     plugin.play({id: 1, title: 'Тест'}, {url: 'https://example.com/film.mp4'});
     assert.equal(played.url, 'https://example.com/film.mp4'); assert.equal(played.timeline.time, 12); assert.equal(history[0], 'history');
 });
+test('removed sources and demonstration entry do not return to the source menu', () => {
+    const plugin = fs.readFileSync(path.join(__dirname, '../plugins/sources.js'), 'utf8');
+    assert.doesNotMatch(plugin, /archive\.org|wikimedia|wikipedia|Big Buck Bunny/i);
+    assert.match(plugin, /Filmix/); assert.match(plugin, /HDRezka/);
+});

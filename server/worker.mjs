@@ -1,3 +1,4 @@
+import {createProviders} from './providers.mjs';
 const LOGIN_TTL = 600;
 const SESSION_TTL = 86400 * 90;
 const now = () => Math.floor(Date.now() / 1000);
@@ -41,6 +42,7 @@ async function cleanup(env) {
     ]);
 }
 export function createService(fetchImpl = fetch) {
+    const providerHandler = createProviders(fetchImpl);
     async function telegram(env, method, data) {
         const response = await fetchImpl('https://api.telegram.org/bot' + env.BOT_TOKEN + '/' + method, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(data)});
         const result = await response.json(); if (!response.ok || !result.ok) throw new Error('telegram_unavailable'); return result.result;
@@ -147,7 +149,15 @@ export function createService(fetchImpl = fetch) {
             const headers = {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'vary': 'Origin'};
             if (origin === env.APP_ORIGIN) { headers['access-control-allow-origin'] = origin; headers['access-control-allow-methods'] = 'GET,POST,PUT,OPTIONS'; headers['access-control-allow-headers'] = 'Content-Type,Authorization'; }
             if (request.method === 'OPTIONS') return new Response(null, {status: origin === env.APP_ORIGIN ? 204 : 403, headers});
-            try { return new Response(JSON.stringify(await handle(request, env)), {headers}); }
+            try {
+                if (new URL(request.url).pathname.startsWith('/api/providers')) {
+                    if (origin && origin !== env.APP_ORIGIN) fail(403, 'Цей сайт не дозволений');
+                    if (env.DB) await rate(env, 'provider-ip:' + await hash(request.headers.get('CF-Connecting-IP') || 'local'), 60, 60);
+                    const response = await providerHandler(request);
+                    return new Response(response.body, {status: response.status, headers: {...headers, 'content-type': 'application/json; charset=utf-8'}});
+                }
+                return new Response(JSON.stringify(await handle(request, env)), {headers});
+            }
             catch (error) { return new Response(JSON.stringify({error: error.status ? error.message : 'Сервіс тимчасово недоступний'}), {status: error.status || 503, headers}); }
         },
         async scheduled(_event, env) { await cleanup(env); }
