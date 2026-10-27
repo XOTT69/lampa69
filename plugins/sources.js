@@ -1,4 +1,4 @@
-/* XOTT Sources v2.0.0 — direct media only; no embeds, popups or ad SDKs. */
+/* XOTT Sources v2.1.0 — direct media only; no embeds, popups or ad SDKs. */
 (function () {
     'use strict';
     if (window.XOTT_SOURCES_V2) return;
@@ -51,35 +51,72 @@
             streams(card, list, 'Власний каталог · ' + title(card));
         });
     }
-    function archive(card) {
+    function sourceRequest(provider, action, data, callback) {
+        var base = Lampa.Storage.get('xott_provider_api', '') || (window.XOTT_CONFIG && window.XOTT_CONFIG.providers) || '';
+        if (!base) return callback(new Error('Сервер джерел ще не підключений. Вкажіть адресу в налаштуваннях XOTT Sources.'));
+        if (base.charAt(0) === '/') base = location.origin + base;
+        if (!/^https:\/\//i.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(base)) return callback(new Error('Адреса сервера джерел має починатися з HTTPS'));
+        var url = base.replace(/\/$/, '') + '/' + provider + '/' + action;
+        var xhr = new XMLHttpRequest(), done = false;
+        function finish(error, result) { if (!done) { done = true; callback(error, result); } }
+        xhr.open(data ? 'POST' : 'GET', url, true); xhr.timeout = 25000;
+        if (data) xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function () { var result; try { result = JSON.parse(xhr.responseText); } catch (_) { return finish(new Error('Сервер джерел повернув некоректну відповідь')); } if (xhr.status < 200 || xhr.status >= 300) return finish(new Error(result.error || 'Джерело недоступне')); finish(null, result); };
+        xhr.onerror = function () { finish(new Error('Сервер джерел недоступний або не дозволяє CORS')); };
+        xhr.ontimeout = function () { finish(new Error('Джерело не відповіло вчасно')); }; xhr.send(data ? JSON.stringify(data) : null);
+    }
+    function normalize(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9\u0400-\u04ff]/g, ''); }
+    function lookup(card, provider) {
         var name = card.original_title || card.original_name || title(card);
-        var escaped = name.replace(/["\\]/g, ' ');
-        var query = 'title:("' + escaped + '") AND mediatype:movies';
-        notify('Шукаємо у відкритому архіві…');
-        get('https://archive.org/advancedsearch.php?q=' + encodeURIComponent(query) + '&fl[]=identifier&fl[]=title&fl[]=year&rows=25&output=json', function (error, result) {
+        notify('Шукаємо у ' + (provider === 'filmix' ? 'Filmix' : 'HDRezka') + '…');
+        sourceRequest(provider, 'search?query=' + encodeURIComponent(name), null, function (error, result) {
             if (error) return notify(error.message);
-            var rows = ((result || {}).response || {}).docs || [];
-            choose(rows.map(function (row) { return {title: row.title, subtitle: 'Internet Archive · ' + (row.year || '') + ' · перевірте назву та рік', id: row.identifier}; }), 'Результати архіву · ' + name, function (item) {
-                get('https://archive.org/metadata/' + encodeURIComponent(item.id), function (fileError, info) {
-                    if (fileError) return notify(fileError.message);
-                    if (info.is_dark || info.metadata && info.metadata.is_restricted) return notify('Файл обмежений власником архіву');
-                    var files = (info.files || []).filter(function (file) { return /\.mp4$/i.test(file.name || '') && file.source && !/thumb|sample|trailer/i.test(file.name); });
-                    streams(card, files.map(function (file) { return {name: file.name, quality: file.height ? file.height + 'p' : '', url: 'https://archive.org/download/' + encodeURIComponent(item.id) + '/' + file.name.split('/').map(encodeURIComponent).join('/')}; }), item.title);
+            var rows = result.items || [];
+            var year = Number(String(card.release_date || card.first_air_date || '').slice(0, 4));
+            var exact = rows.filter(function (item) { return [item.title, item.original_title].some(function (candidate) { return normalize(candidate) === normalize(name) || normalize(candidate) === normalize(title(card)); }) && (!year || !item.year || item.year === year); });
+            if (exact.length === 1) return found(exact[0]);
+            choose(rows.map(function (item) { return {title: item.title + (item.year ? ' (' + item.year + ')' : ''), subtitle: item.original_title || '', result: item}; }), 'Результати ' + (provider === 'filmix' ? 'Filmix' : 'HDRezka'), function (item) { found(item.result); });
+            function found(item) {
+                sourceRequest(provider, provider === 'rezka' ? 'details' : 'streams', {id: item.id}, function (loadError, details) {
+                    if (loadError) return notify(loadError.message);
+                    if (provider === 'filmix') {
+                        if (!details.streams || !details.streams.length) return notify(details.message || 'Це відео недоступне в гостьовому режимі');
+                        return pickEpisodes(card, details.streams, 'Filmix');
+                    }
+                    choose((details.voices || []).map(function (voice) { return {title: voice.title, voice: voice}; }), 'HDRezka · озвучка', function (selected) {
+                        var params = {id: details.id, voice: selected.voice.id, is_camrip: selected.voice.is_camrip, is_director: selected.voice.is_director, series: details.series, season: details.default_season, episode: details.default_episode};
+                        function load() { sourceRequest('rezka', 'streams', params, function (streamError, response) { if (streamError) return notify(streamError.message); if (!response.streams || !response.streams.length) return notify(response.message || 'Джерело не надало відео'); pickEpisodes(card, response.streams, 'HDRezka'); }); }
+                        if (details.series) return notify('Серіали HDRezka поки не підтримуються цим адаптером. Спробуйте Filmix.');
+                        load();
+                    });
+                    if (!details.voices || !details.voices.length) notify(details.message || 'Доступних озвучок немає');
                 });
-            });
+            }
         });
     }
-    function commons(card) {
-        notify('Шукаємо відеоматеріали Wikimedia…');
-        get('https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrsearch=' + encodeURIComponent(title(card) + ' filetype:video') + '&gsrlimit=15&prop=videoinfo&viprop=url%7Cderivatives', function (error, data) {
-            if (error) return notify(error.message);
-            var entries = [], pages = data.query && data.query.pages || {};
-            Object.keys(pages).forEach(function (key) { var page = pages[key], video = page.videoinfo && page.videoinfo[0]; if (video) { var derivative = (video.derivatives || []).filter(function (entry) { return playable(entry.src) && /webm/i.test(entry.type || entry.src); })[0]; var url = derivative ? derivative.src : video.url; if (playable(url)) entries.push({name: page.title.replace(/^File:/, ''), url: url}); } });
-            streams(card, entries, 'Wikimedia · матеріали, можуть бути уривками');
+    function pickEpisodes(card, list, label) {
+        var seasons = [];
+        list.forEach(function (entry) { if (entry.season && seasons.indexOf(entry.season) < 0) seasons.push(entry.season); });
+        if (!seasons.length) return pickVoice(list);
+        seasons.sort(function (a, b) { return a - b; });
+        choose(seasons.map(function (n) { return {title: 'Сезон ' + n, number: n}; }), label + ' · сезон', function (season) {
+            var selected = list.filter(function (entry) { return entry.season === season.number; }), episodes = [];
+            selected.forEach(function (entry) { if (episodes.indexOf(entry.episode) < 0) episodes.push(entry.episode); });
+            episodes.sort(function (a, b) { return a - b; });
+            choose(episodes.map(function (n) { return {title: 'Серія ' + n, number: n}; }), label + ' · серія', function (episode) { pickVoice(selected.filter(function (entry) { return entry.episode === episode.number; })); });
         });
+        function pickVoice(entries) {
+            var voices = [];
+            entries.forEach(function (entry) { var voice = entry.voice || 'Основна озвучка'; if (voices.indexOf(voice) < 0) voices.push(voice); });
+            voices.sort(function (a, b) { return Number(/укр|ukrain|\bua\b/i.test(b)) - Number(/укр|ukrain|\bua\b/i.test(a)); });
+            if (voices.length < 2) return streams(card, entries, label + ' · якість');
+            choose(voices.map(function (voice) { return {title: voice, voice: voice}; }), label + ' · озвучка', function (selected) { streams(card, entries.filter(function (entry) { return (entry.voice || 'Основна озвучка') === selected.voice; }), label + ' · якість'); });
+        }
     }
     function open(card) {
-        choose([{title: 'Власний каталог', subtitle: 'Озвучки, якість і серії з вашого JSON-каталогу', source: catalog}, {title: 'Internet Archive', subtitle: 'Відкриті архівні відео; назву та рік потрібно звіряти', source: archive}, {title: 'Wikimedia Commons', subtitle: 'Вільні відеоматеріали та уривки', source: commons}], 'XOTT Sources · ' + title(card), function (item) { item.source(card); });
+        var choices = [{title: 'Filmix', subtitle: 'Автоматичний пошук · гостьовий доступ до 480p', source: function () { lookup(card, 'filmix'); }}, {title: 'HDRezka', subtitle: 'Гостьовий доступ · доступність залежить від джерела', source: function () { lookup(card, 'rezka'); }}];
+        if (Lampa.Storage.get('xott_catalog_url', '') || window.XOTT_CONFIG && window.XOTT_CONFIG.catalog) choices.push({title: 'Власний каталог', subtitle: 'Ваші прямі відеопотоки', source: function () { catalog(card); }});
+        choose(choices, 'XOTT Sources · ' + title(card), function (item) { item.source(); });
     }
     function inject(event) {
         if (!event || ['complite', 'complete'].indexOf(event.type) < 0) return;
@@ -95,7 +132,7 @@
     function ready() {
         Lampa.Listener.follow('full', inject);
         Lampa.SettingsApi.addComponent({component: 'xott_sources', name: 'XOTT Sources', icon: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>'});
-        Lampa.SettingsApi.addParam({component: 'xott_sources', param: {type: 'button'}, field: {name: 'Перевірити плеєр · Big Buck Bunny', description: 'Відкритий демонстраційний MP4 без діалогів'}, onRender: function (item) { item.on('hover:enter', function () { play({id: 12690, title: 'Big Buck Bunny', original_title: 'Big Buck Bunny'}, {url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}); }); }});
+        Lampa.SettingsApi.addParam({component: 'xott_sources', param: {name: 'xott_provider_api', type: 'input', values: '', default: ''}, field: {name: 'Сервер джерел', description: 'HTTPS-адреса API джерел. На нашому сервері налаштовано автоматично.'}});
         Lampa.SettingsApi.addParam({component: 'xott_sources', param: {name: 'xott_catalog_url', type: 'input', values: '', default: ''}, field: {name: 'URL власного каталогу', description: 'HTTPS JSON-каталог із прямими відеопотоками. Потрібен дозвіл CORS.'}});
     }
     window.XottSources = {open: open, play: play, playable: playable};
