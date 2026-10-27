@@ -1,4 +1,4 @@
-/* XOTT Sources v2.1.0 — direct media only; no embeds, popups or ad SDKs. */
+/* XOTT Sources v2.2.0 — direct media only; no embeds, popups or ad SDKs. */
 (function () {
     'use strict';
     if (window.XOTT_SOURCES_V2) return;
@@ -55,7 +55,7 @@
         var base = Lampa.Storage.get('xott_provider_api', '') || (window.XOTT_CONFIG && window.XOTT_CONFIG.providers) || '';
         if (!base) return callback(new Error('Сервер джерел ще не підключений. Вкажіть адресу в налаштуваннях XOTT Sources.'));
         if (base.charAt(0) === '/') base = location.origin + base;
-        if (!/^https:\/\//i.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(base)) return callback(new Error('Адреса сервера джерел має починатися з HTTPS'));
+        if (!/^https:\/\//i.test(base) && base.indexOf(location.origin + '/') !== 0) return callback(new Error('Адреса сервера джерел має починатися з HTTPS'));
         var url = base.replace(/\/$/, '') + '/' + provider + '/' + action;
         var xhr = new XMLHttpRequest(), done = false;
         function finish(error, result) { if (!done) { done = true; callback(error, result); } }
@@ -68,20 +68,21 @@
     function normalize(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9\u0400-\u04ff]/g, ''); }
     function lookup(card, provider) {
         var name = card.original_title || card.original_name || title(card);
-        notify('Шукаємо у ' + (provider === 'filmix' ? 'Filmix' : 'HDRezka') + '…');
+        var label = provider === 'filmix' ? 'Filmix' : provider === 'aniliberty' ? 'AniLiberty' : 'HDRezka';
+        notify('Шукаємо у ' + label + '…');
         sourceRequest(provider, 'search?query=' + encodeURIComponent(name), null, function (error, result) {
             if (error) return notify(error.message);
             var rows = result.items || [];
             var year = Number(String(card.release_date || card.first_air_date || '').slice(0, 4));
             var exact = rows.filter(function (item) { return [item.title, item.original_title].some(function (candidate) { return normalize(candidate) === normalize(name) || normalize(candidate) === normalize(title(card)); }) && (!year || !item.year || item.year === year); });
             if (exact.length === 1) return found(exact[0]);
-            choose(rows.map(function (item) { return {title: item.title + (item.year ? ' (' + item.year + ')' : ''), subtitle: item.original_title || '', result: item}; }), 'Результати ' + (provider === 'filmix' ? 'Filmix' : 'HDRezka'), function (item) { found(item.result); });
+            choose(rows.map(function (item) { return {title: item.title + (item.year ? ' (' + item.year + ')' : ''), subtitle: item.original_title || '', result: item}; }), 'Результати ' + label, function (item) { found(item.result); });
             function found(item) {
                 sourceRequest(provider, provider === 'rezka' ? 'details' : 'streams', {id: item.id}, function (loadError, details) {
                     if (loadError) return notify(loadError.message);
-                    if (provider === 'filmix') {
+                    if (provider !== 'rezka') {
                         if (!details.streams || !details.streams.length) return notify(details.message || 'Це відео недоступне в гостьовому режимі');
-                        return pickEpisodes(card, details.streams, 'Filmix');
+                        return pickEpisodes(card, details.streams, label);
                     }
                     choose((details.voices || []).map(function (voice) { return {title: voice.title, voice: voice}; }), 'HDRezka · озвучка', function (selected) {
                         var params = {id: details.id, voice: selected.voice.id, is_camrip: selected.voice.is_camrip, is_director: selected.voice.is_director, series: details.series, season: details.default_season, episode: details.default_episode};
@@ -114,7 +115,7 @@
         }
     }
     function open(card) {
-        var choices = [{title: 'Filmix', subtitle: 'Автоматичний пошук · гостьовий доступ до 480p', source: function () { lookup(card, 'filmix'); }}, {title: 'HDRezka', subtitle: 'Гостьовий доступ · доступність залежить від джерела', source: function () { lookup(card, 'rezka'); }}];
+        var choices = [{title: 'Filmix', subtitle: 'Автоматичний пошук · гостьовий доступ до 480p', source: function () { lookup(card, 'filmix'); }}, {title: 'AniLiberty', subtitle: 'Аніме · озвучка джерела · абсолютні номери серій', source: function () { lookup(card, 'aniliberty'); }}];
         if (Lampa.Storage.get('xott_catalog_url', '') || window.XOTT_CONFIG && window.XOTT_CONFIG.catalog) choices.push({title: 'Власний каталог', subtitle: 'Ваші прямі відеопотоки', source: function () { catalog(card); }});
         choose(choices, 'XOTT Sources · ' + title(card), function (item) { item.source(); });
     }
